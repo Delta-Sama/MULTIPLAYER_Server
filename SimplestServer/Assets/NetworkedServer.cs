@@ -47,29 +47,6 @@ public class NetworkedServer : MonoBehaviour
         Debug.Log("Host server id: " + hostID);
     }
 
-    void SendEmailMessage(string recipientAddress, string subject, string passedMessage, string[] attachments = null)
-    {
-        MailAddress Notifier = new MailAddress("deltas.notifier@gmail.com", "Delta's Notifier");
-        MailAddress Recipient = new MailAddress(recipientAddress);
-
-        MailMessage message = new MailMessage(Notifier, Recipient);
-        message.Subject = subject;
-        message.Body = passedMessage;
-
-        if (attachments != null && attachments.Length > 0)
-        {
-            foreach (string attachment in attachments)
-            {
-                message.Attachments.Add(new Attachment(attachment));
-            }
-        }
-
-        SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587);
-        smtp.Credentials = new NetworkCredential("deltas.notifier@gmail.com","Rimskogo-Korsakova1kv19");
-        smtp.EnableSsl = true;
-        smtp.Send(message);
-    }
-
     void Update()
     {
 
@@ -136,6 +113,12 @@ public class NetworkedServer : MonoBehaviour
 
             LoginIn(id, login, password);
         }
+        else if (requestType == ClientToServerTransferSignifiers.ForgotPassword)
+        {
+            string login = csv[1];
+
+            SendPasswordToEmail(id, login);
+        }
     }
 
     private void LoginIn(int id, string login, string password)
@@ -180,16 +163,67 @@ public class NetworkedServer : MonoBehaviour
         int index = DataManager.Instance.RegisterNewAccountIndex(login);
 
         DataManager.Instance.WriteDataToAccountFile(index, login, password, email);
+
+        SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Your account " + login + " was created!" + "," + "3.0" + "," + "2", id);
     }
 
-    
+    private void SendPasswordToEmail(int id, string login)
+    {
+        int accountIdx = -1;
+        foreach (var idx in DataManager.Instance.indexesDict)
+        {
+            if (idx.Value == login)
+            {
+                accountIdx = idx.Key;
+                break;
+            }
+        }
+
+        if (accountIdx < 0)
+        {
+            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "No such login is found!", id);
+            return;
+        }
+
+        AccountInfo info = DataManager.Instance.GetAccountInformation(accountIdx);
+
+        string passwordReminder = "Hello!\n\nThis is Delta`s Notifier. We've just got a request for your password reminder.\n\nYour password: " +
+            info.password + "\n\nIf you didn`t request a password reminder, just ignore this message.\n\nRegards,\nDelta`s Notifier";
+
+        SendEmailMessage(info.email, "Password reminder", passwordReminder);
+
+        SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Your password was sent to your connected email!" + "," + "4.5" + "," + "3", id);
+    }
+
+    void SendEmailMessage(string recipientAddress, string subject, string passedMessage, string[] attachments = null)
+    {
+        MailAddress Notifier = new MailAddress("deltas.notifier@gmail.com", "Delta's Notifier");
+        MailAddress Recipient = new MailAddress(recipientAddress);
+
+        MailMessage message = new MailMessage(Notifier, Recipient);
+        message.Subject = subject;
+        message.Body = passedMessage;
+
+        if (attachments != null && attachments.Length > 0)
+        {
+            foreach (string attachment in attachments)
+            {
+                message.Attachments.Add(new Attachment(attachment));
+            }
+        }
+
+        SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587);
+        smtp.Credentials = new NetworkCredential("deltas.notifier@gmail.com", "Rimskogo-Korsakova1kv19");
+        smtp.EnableSsl = true;
+        smtp.Send(message);
+    }
 }
 
 public static class ClientToServerTransferSignifiers
 {
     public const int CreateAccount = 1;
     public const int Login = 2;
-
+    public const int ForgotPassword = 3;
 }
 
 public static class ServerToClientTransferSignifiers

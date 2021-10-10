@@ -160,7 +160,7 @@ public class NetworkedServer : MonoBehaviour
 
         if (info.password == password)
         {
-            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "You are logged in!", id);
+            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "You are logged in!" + "," + "3.0" + "," + "2", id);
         }
         else
             SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);

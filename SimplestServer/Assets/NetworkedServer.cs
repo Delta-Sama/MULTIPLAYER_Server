@@ -129,8 +129,41 @@ public class NetworkedServer : MonoBehaviour
 
             CreateAccount(id, login, password, email);
         }
+        else if (requestType == ClientToServerTransferSignifiers.Login)
+        {
+            string login = csv[1];
+            string password = csv[2];
 
-        SendMessageToClient("Received your message, boi!", id);
+            LoginIn(id, login, password);
+        }
+    }
+
+    private void LoginIn(int id, string login, string password)
+    {
+        int accountIdx = -1;
+        foreach (var idx in DataManager.Instance.indexesDict)
+        {
+            if (idx.Value == login)
+            {
+                accountIdx = idx.Key;
+                break;
+            }
+        }
+
+        if (accountIdx < 0)
+        {
+            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
+            return;
+        }
+
+        AccountInfo info = DataManager.Instance.GetAccountInformation(accountIdx);
+
+        if (info.password == password)
+        {
+            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "You are logged in!", id);
+        }
+        else
+            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
     }
 
     private void CreateAccount(int id, string login, string password, string email)
@@ -139,7 +172,7 @@ public class NetworkedServer : MonoBehaviour
         {
             if (idx.Value == login)
             {
-                SendMessageToClient(ServerToClientTransferSignifiers.Message + "That login is already in use! Try to sing in instead!", id);
+                SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "That login is already in use! Try to sing in instead!", id);
                 return;
             }
         }

@@ -12,7 +12,7 @@ public class DataManager : MonoBehaviour
     public Dictionary<int, string> indexesDict;
 
     private const int LastIndexSpecifier = 1;
-    private const int FileIndexAndLoginSpecifier = 1;
+    private const int FileIndexAndLoginSpecifier = 2;
 
     public static DataManager Instance;
 
@@ -105,12 +105,63 @@ public class DataManager : MonoBehaviour
 
     public void WriteDataToAccountFile(int index, string login, string password, string email)
     {
-        string path = Application.dataPath + Path.DirectorySeparatorChar + "Data" + Path.DirectorySeparatorChar + "File" + index + ".txt";
+        string path = Application.dataPath + Path.DirectorySeparatorChar + "ClientsData" + Path.DirectorySeparatorChar + "File" + index + ".txt";
 
         StreamWriter sWriter = new StreamWriter(path);
 
-
+        sWriter.WriteLine(AccountFileSpecifiers.Login + "," + login);
+        sWriter.WriteLine(AccountFileSpecifiers.Password + "," + password);
+        sWriter.WriteLine(AccountFileSpecifiers.Email + "," + email);
 
         sWriter.Close();
     }
+
+    public AccountInfo GetAccountInformation(int index)
+    {
+        AccountInfo info = new AccountInfo();
+
+        string path = Application.dataPath + Path.DirectorySeparatorChar + "ClientsData" + Path.DirectorySeparatorChar + "File" + index + ".txt";
+
+        StreamReader sReader = new StreamReader(path);
+        string line;
+
+        while ((line = sReader.ReadLine()) != null)
+        {
+            string[] csv = line.Split(',');
+
+            int specifier = int.Parse(csv[0]);
+
+            if (specifier == AccountFileSpecifiers.Login)
+                info.login = csv[1];
+            else if (specifier == AccountFileSpecifiers.Password)
+                info.password = csv[1];
+            else if (specifier == AccountFileSpecifiers.Email)
+                info.email = csv[1];
+        }
+
+        sReader.Close();
+
+        return info;
+    }
+}
+public struct AccountInfo
+{
+    AccountInfo(string l, string p, string e)
+    {
+        login = l;
+        password = p;
+        email = e;
+    }
+
+    public string login;
+    public string password;
+    public string email;
+}
+
+public static class AccountFileSpecifiers
+{
+    public const int Login = 1;
+    public const int Password = 2;
+    public const int Email = 3;
+
 }

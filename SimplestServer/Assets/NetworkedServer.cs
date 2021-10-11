@@ -76,7 +76,7 @@ public class NetworkedServer : MonoBehaviour
 
     }
   
-    public void SendMessageToClient(string msg, int id)
+    public void SendClientRequest(string msg, int id)
     {
         byte error = 0;
         // Encrypt the string into a byte buffer
@@ -88,7 +88,8 @@ public class NetworkedServer : MonoBehaviour
 
     private void ProcessRecievedRequest(string msg, int id, int hostId)
     {
-        Debug.Log("msg recieved = " + msg + ".  connection id = " + id + ", hostId: " + hostId);
+        Debug.Log("[CLIENT " + id +"]: " + msg);
+
         string[] csv = msg.Split(',');
 
         int requestType = int.Parse(csv[0]);
@@ -114,6 +115,19 @@ public class NetworkedServer : MonoBehaviour
 
             SendPasswordToEmail(id, login);
         }
+        else if (requestType == ClientToServerTransferSignifiers.SendGlobalMessage)
+        {
+            string message = csv[1];
+
+            ProcessGlobalMessage(id, message);
+        }
+        else if (requestType == ClientToServerTransferSignifiers.SendPrivateMessage)
+        {
+            int receiverId = int.Parse(csv[1]);
+            string message = csv[2];
+
+            ProcessPrivateMessage(id, receiverId, message);
+        }
     }
 
     private void LoginIn(int id, string login, string password)
@@ -130,7 +144,7 @@ public class NetworkedServer : MonoBehaviour
 
         if (accountIdx < 0)
         {
-            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
+            SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
             return;
         }
 
@@ -144,18 +158,18 @@ public class NetworkedServer : MonoBehaviour
 
             connectedUsers.Add(id, account);
 
-            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "You are logged in!" + "," + "3.0" + "," + "2", id);
-            SendMessageToClient(ServerToClientTransferSignifiers.SuccessfulLogin.ToString(),id);
+            SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "You are logged in!" + "," + "3.0" + "," + "2", id);
+            SendClientRequest(ServerToClientTransferSignifiers.SuccessfulLogin.ToString(),id);
 
             foreach (var user in connectedUsers)
             {
                 if (user.Key != id)
-                    SendMessageToClient(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + user.Value.userId + ","
+                    SendClientRequest(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + user.Value.userId + ","
                         + user.Value.login, id);
             }
         }
         else
-            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
+            SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
 
     }
 
@@ -165,7 +179,7 @@ public class NetworkedServer : MonoBehaviour
         {
             if (idx.Value == login)
             {
-                SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "That login is already in use! Try to sing in instead!", id);
+                SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "That login is already in use! Try to sing in instead!", id);
                 return;
             }
         }
@@ -174,7 +188,7 @@ public class NetworkedServer : MonoBehaviour
 
         DataManager.Instance.WriteDataToAccountFile(index, login, password, email);
 
-        SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Your account " + login + " was created!" + "," + "3.0" + "," + "2", id);
+        SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "Your account " + login + " was created!" + "," + "3.0" + "," + "2", id);
     }
 
     private void SendPasswordToEmail(int id, string login)
@@ -191,7 +205,7 @@ public class NetworkedServer : MonoBehaviour
 
         if (accountIdx < 0)
         {
-            SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "No such login is found!", id);
+            SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "No such login is found!", id);
             return;
         }
 
@@ -202,7 +216,23 @@ public class NetworkedServer : MonoBehaviour
 
         EmailService.SendEmailMessage(info.email, "Password reminder", passwordReminder);
 
-        SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Your password was sent to your connected email!" + "," + "4.5" + "," + "3", id);
+        SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "Your password was sent to your connected email!" + "," + "4.5" + "," + "3", id);
+    }
+
+    private void ProcessGlobalMessage(int id, string message)
+    {
+        foreach (var user in connectedUsers)
+        {
+            SendClientRequest(ServerToClientTransferSignifiers.ReceiveGlobalMessage + "," + id + "," + message, user.Key);
+        }
+    }
+
+    private void ProcessPrivateMessage(int id, int receiverId, string message)
+    {
+        if (connectedUsers.ContainsKey(receiverId))
+        {
+            SendClientRequest(ServerToClientTransferSignifiers.ReceivePrivateMessage + "," + id + "," + message, receiverId);
+        }
     }
 
     private void ProcessDisconnect(int id)
@@ -212,7 +242,7 @@ public class NetworkedServer : MonoBehaviour
 
         foreach (var user in connectedUsers)
         {
-            SendMessageToClient(ServerToClientTransferSignifiers.UserDisconnected + "," + id, user.Key);
+            SendClientRequest(ServerToClientTransferSignifiers.UserDisconnected + "," + id, user.Key);
         }
     }
 }
@@ -222,6 +252,9 @@ public static class ClientToServerTransferSignifiers
     public const int CreateAccount = 1;
     public const int Login = 2;
     public const int ForgotPassword = 3;
+
+    public const int SendGlobalMessage = 4;
+    public const int SendPrivateMessage = 5;
 }
 
 public static class ServerToClientTransferSignifiers
@@ -231,4 +264,7 @@ public static class ServerToClientTransferSignifiers
 
     public const int AddUserToLocalClient = 3;
     public const int UserDisconnected = 4;
+
+    public const int ReceiveGlobalMessage = 5;
+    public const int ReceivePrivateMessage = 6;
 }

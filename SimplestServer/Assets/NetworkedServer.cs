@@ -6,8 +6,6 @@ using UnityEngine.Networking;
 using UnityEditor;
 using System.IO;
 using UnityEngine.UI;
-using System.Net.Mail;
-using System.Net;
 
 public class NetworkedServer : MonoBehaviour
 {
@@ -17,15 +15,13 @@ public class NetworkedServer : MonoBehaviour
     int hostID;
     int socketPort = 5491;
 
-    // Start is called before the first frame update
+    private Dictionary<int, UserAccount> connectedUsers;
+
     void Start()
     {
         SetupConnection();
 
-        /*SendEmailMessage("Fernando.Restituto@georgebrown.ca",
-            "Assignment2 Notifier",
-            "Hello there!\n\nThis is Maxim, and this email is sent from unity. The code is attached bellow!\n\nRegards,\nMaxim Dobrivskiy\n101290100",
-            new string[] { "C://Users//Maxim//Desktop//SmtpCode.txt" });*/
+        connectedUsers = new Dictionary<int, UserAccount>();
     }
 
     void SetupConnection()
@@ -49,7 +45,6 @@ public class NetworkedServer : MonoBehaviour
 
     void Update()
     {
-
         int recHostID;
         int recConnectionID;
         int recChannelID;
@@ -70,12 +65,12 @@ public class NetworkedServer : MonoBehaviour
                 Debug.Log("Connection, " + recConnectionID);
                 break;
             case NetworkEventType.DataEvent:
-                // Decrypt a byte buffer to a string
                 string msg = Encoding.Unicode.GetString(recBuffer, 0, dataSize);
                 ProcessRecievedRequest(msg, recConnectionID, recHostID);
                 break;
             case NetworkEventType.DisconnectEvent:
                 Debug.Log("Disconnection, " + recConnectionID);
+                ProcessDisconnect(recConnectionID);
                 break;
         }
 
@@ -143,10 +138,25 @@ public class NetworkedServer : MonoBehaviour
 
         if (info.password == password)
         {
+            UserAccount account = new UserAccount();
+            account.login = info.login;
+            account.userId = id;
+
+            connectedUsers.Add(id, account);
+
             SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "You are logged in!" + "," + "3.0" + "," + "2", id);
+            SendMessageToClient(ServerToClientTransferSignifiers.SuccessfulLogin.ToString(),id);
+
+            foreach (var user in connectedUsers)
+            {
+                if (user.Key != id)
+                    SendMessageToClient(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + user.Value.userId + ","
+                        + user.Value.login, id);
+            }
         }
         else
             SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
+
     }
 
     private void CreateAccount(int id, string login, string password, string email)
@@ -190,32 +200,20 @@ public class NetworkedServer : MonoBehaviour
         string passwordReminder = "Hello!\n\nThis is Delta`s Notifier. We've just got a request for your password reminder.\n\nYour password: " +
             info.password + "\n\nIf you didn`t request a password reminder, just ignore this message.\n\nRegards,\nDelta`s Notifier";
 
-        SendEmailMessage(info.email, "Password reminder", passwordReminder);
+        EmailService.SendEmailMessage(info.email, "Password reminder", passwordReminder);
 
         SendMessageToClient(ServerToClientTransferSignifiers.Message + "," + "Your password was sent to your connected email!" + "," + "4.5" + "," + "3", id);
     }
 
-    void SendEmailMessage(string recipientAddress, string subject, string passedMessage, string[] attachments = null)
+    private void ProcessDisconnect(int id)
     {
-        MailAddress Notifier = new MailAddress("deltas.notifier@gmail.com", "Delta's Notifier");
-        MailAddress Recipient = new MailAddress(recipientAddress);
+        if (connectedUsers.ContainsKey(id))
+            connectedUsers.Remove(id);
 
-        MailMessage message = new MailMessage(Notifier, Recipient);
-        message.Subject = subject;
-        message.Body = passedMessage;
-
-        if (attachments != null && attachments.Length > 0)
+        foreach (var user in connectedUsers)
         {
-            foreach (string attachment in attachments)
-            {
-                message.Attachments.Add(new Attachment(attachment));
-            }
+            SendMessageToClient(ServerToClientTransferSignifiers.UserDisconnected + "," + id, user.Key);
         }
-
-        SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587);
-        smtp.Credentials = new NetworkCredential("deltas.notifier@gmail.com", "Rimskogo-Korsakova1kv19");
-        smtp.EnableSsl = true;
-        smtp.Send(message);
     }
 }
 
@@ -229,5 +227,8 @@ public static class ClientToServerTransferSignifiers
 public static class ServerToClientTransferSignifiers
 {
     public const int Message = 1;
+    public const int SuccessfulLogin = 2;
 
+    public const int AddUserToLocalClient = 3;
+    public const int UserDisconnected = 4;
 }

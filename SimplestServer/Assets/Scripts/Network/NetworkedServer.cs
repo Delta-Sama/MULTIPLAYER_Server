@@ -2,26 +2,29 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.Networking;
-using UnityEditor;
-using System.IO;
-using UnityEngine.UI;
 
 public class NetworkedServer : MonoBehaviour
 {
+    public static NetworkedServer Instance;
+
     int maxConnections = 1000;
     int reliableChannelID;
     int unreliableChannelID;
     int hostID;
     int socketPort = 5491;
 
-    private Dictionary<int, UserAccount> connectedUsers;
+    [HideInInspector] public UnityEvent<int> OnUserDisconnectEvent = new UnityEvent<int>();
+
+    private void Awake()
+    {
+        Instance = this;
+    }
 
     void Start()
     {
         SetupConnection();
-
-        connectedUsers = new Dictionary<int, UserAccount>();
     }
 
     void SetupConnection()
@@ -128,6 +131,18 @@ public class NetworkedServer : MonoBehaviour
 
             ProcessPrivateMessage(id, receiverId, message);
         }
+        else if (requestType == ClientToServerTransferSignifiers.CreateMatch)
+        {
+            string matchName = csv[1];
+
+            MatchManager.Instance.AddMatch(id, matchName);
+        }
+        else if (requestType == ClientToServerTransferSignifiers.JoinMatch)
+        {
+            int matchId = int.Parse(csv[1]);
+
+            MatchManager.Instance.AddPlayerToMatch(id, matchId);
+        }
     }
 
     private void LoginIn(int id, string login, string password)
@@ -152,21 +167,24 @@ public class NetworkedServer : MonoBehaviour
 
         if (info.password == password)
         {
-            UserAccount account = new UserAccount();
-            account.login = info.login;
-            account.userId = id;
-
-            connectedUsers.Add(id, account);
+            UserAccount account = UsersManager.Instance.AddUser(id,info.login);
 
             SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "You are logged in!" + "," + "3.0" + "," + "2", id);
-            SendClientRequest(ServerToClientTransferSignifiers.SuccessfulLogin.ToString(),id);
+            SendClientRequest(ServerToClientTransferSignifiers.SuccessfulLogin + ",", id);
 
-            foreach (var user in connectedUsers)
+            foreach (var user in UsersManager.Instance.connectedUsers)
             {
-                if (user.Key != id)
-                    SendClientRequest(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + user.Value.userId + ","
-                        + user.Value.login, id);
+                // Add each old user to the new user
+                SendClientRequest(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + user.Value.userId + ","
+                    + user.Value.login, id);
+
+                // Notify each old user about new user
+                if (user.Key != account.userId)
+                    SendClientRequest(ServerToClientTransferSignifiers.AddUserToLocalClient + "," + account.userId + ","
+                            + account.login, user.Value.userId);
             }
+
+            // Move connectedUsers.Add here
         }
         else
             SendClientRequest(ServerToClientTransferSignifiers.Message + "," + "Account login or password is incorrect!", id);
@@ -221,15 +239,16 @@ public class NetworkedServer : MonoBehaviour
 
     private void ProcessGlobalMessage(int id, string message)
     {
-        foreach (var user in connectedUsers)
+        foreach (var user in UsersManager.Instance.connectedUsers)
         {
-            SendClientRequest(ServerToClientTransferSignifiers.ReceiveGlobalMessage + "," + id + "," + message, user.Key);
+            //if (user.Key != id)
+                SendClientRequest(ServerToClientTransferSignifiers.ReceiveGlobalMessage + "," + id + "," + message, user.Key);
         }
     }
 
     private void ProcessPrivateMessage(int id, int receiverId, string message)
     {
-        if (connectedUsers.ContainsKey(receiverId))
+        if (UsersManager.Instance.connectedUsers.ContainsKey(receiverId))
         {
             SendClientRequest(ServerToClientTransferSignifiers.ReceivePrivateMessage + "," + id + "," + message, receiverId);
         }
@@ -237,10 +256,11 @@ public class NetworkedServer : MonoBehaviour
 
     private void ProcessDisconnect(int id)
     {
-        if (connectedUsers.ContainsKey(id))
-            connectedUsers.Remove(id);
+        UsersManager.Instance.RemoveUser(id);
 
-        foreach (var user in connectedUsers)
+        OnUserDisconnectEvent.Invoke(id);
+
+        foreach (var user in UsersManager.Instance.connectedUsers)
         {
             SendClientRequest(ServerToClientTransferSignifiers.UserDisconnected + "," + id, user.Key);
         }
@@ -255,6 +275,9 @@ public static class ClientToServerTransferSignifiers
 
     public const int SendGlobalMessage = 4;
     public const int SendPrivateMessage = 5;
+
+    public const int CreateMatch = 6;
+    public const int JoinMatch = 7;
 }
 
 public static class ServerToClientTransferSignifiers
@@ -267,4 +290,8 @@ public static class ServerToClientTransferSignifiers
 
     public const int ReceiveGlobalMessage = 5;
     public const int ReceivePrivateMessage = 6;
+
+    public const int MatchStarted = 7;
+    public const int MatchRemoved = 8;
+    public const int MatchFinished = 9;
 }
